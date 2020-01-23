@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>Newsfab</title>
+		<style type="text/css">
+.feeds {
+	float: right;
+	background-color: #ccc;
+}
+		</style>
+	</head>
+	<body>
+		<div class="feeds">
+			<ul>
+				{{- range .Feeds }}
+				<li><a href="{{ .Link }}">{{ .Title }}</a>
+				</li>
+				{{- end }}
+			</ul>
+		</div>
+		<ul>
+			{{- range .Records }}
+			<li><a href="{{ .Item.Link }}">{{ .Feed.Title }}: {{ .Item.Title }}</a>
+				<span>{{ .Time }}</span>
+			</li>
+			{{- end }}
+		</ul>
+	</body>
+</html>
