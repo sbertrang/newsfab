@@ -74,13 +74,7 @@ func main() {
 		log.Fatal( err )
 	}
 
-	tmpl, err := template.New( templateFile ).ParseFiles( templateFile )
-	if err != nil {
-		log.Fatal( err )
-	}
-
 	feeds := make( []*gofeed.Feed, 0 )
-
 	cache := diskcache.New( ".cache" )
 	transport := httpcache.NewTransport( cache )
 	client := http.Client{ Transport: transport }
@@ -127,6 +121,11 @@ func main() {
 	sort.Slice( data.Records, func( i, j int ) bool {
 		return data.Records[ i ].Time.After( *data.Records[ j ].Time )
 	} )
+
+	tmpl, err := template.New( templateFile ).ParseFiles( templateFile )
+	if err != nil {
+		log.Fatal( err )
+	}
 
 	if outputFile == "" {
 		if err := tmpl.Execute( os.Stdout, data ); err != nil {
