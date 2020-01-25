@@ -36,6 +36,8 @@ type Record struct {
 	Time	*time.Time
 }
 
+type Feeds []*gofeed.Feed
+
 func load_urls( file string ) ( []string, error ) {
 	cfg, err := config.ParseYamlFile( file )
 	if err != nil {
@@ -59,6 +61,33 @@ func load_urls( file string ) ( []string, error ) {
 	return urls, nil
 }
 
+func fetch_feeds( urls []string, ctx context.Context ) ( Feeds, error ) {
+	cache := diskcache.New( ".cache" )
+	transport := httpcache.NewTransport( cache )
+	client := http.Client{ Transport: transport }
+	fp := gofeed.NewParser()
+	fp.Client = &client
+
+	feeds := make( Feeds, 0 )
+
+	var wg sync.WaitGroup
+	for _, url := range urls {
+		wg.Add( 1 )
+		go func( url string ) {
+			feed, err := fp.ParseURLWithContext( url, ctx )
+			if err != nil {
+				log.Println( err )
+			} else {
+				feeds = append( feeds, feed )
+			}
+			wg.Done()
+		}( url )
+	}
+	wg.Wait()
+
+	return feeds, nil
+}
+
 func main() {
 	var configFile = "newsfab.yaml"
 	var outputFile = ""
@@ -74,31 +103,16 @@ func main() {
 		log.Fatal( err )
 	}
 
-	feeds := make( []*gofeed.Feed, 0 )
-	cache := diskcache.New( ".cache" )
-	transport := httpcache.NewTransport( cache )
-	client := http.Client{ Transport: transport }
-	fp := gofeed.NewParser()
-	fp.Client = &client
-
 	ctx, cancel := context.WithTimeout( context.Background(), 10 * time.Second )
 	defer cancel()
-	var wg sync.WaitGroup
-	for _, url := range urls {
-		wg.Add( 1 )
-		go func( url string ) {
-			feed, err := fp.ParseURLWithContext( url, ctx )
-			if err != nil {
-				log.Fatal( err )
-			}
-			feeds = append( feeds, feed )
-			wg.Done()
-		}( url )
+
+	feeds, err := fetch_feeds( urls, ctx )
+	if err != nil {
+		log.Fatal( err )
 	}
-	wg.Wait()
 
 	data := struct {
-		Feeds   []*gofeed.Feed
+		Feeds   Feeds
 		Records	[]Record
 	}{}
 
