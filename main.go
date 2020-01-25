@@ -36,6 +36,28 @@ type Record struct {
 	Time	*time.Time
 }
 
+func load_urls( file string ) ( []string, error ) {
+	cfg, err := config.ParseYamlFile( file )
+	if err != nil {
+		return nil, err
+	}
+
+	curls, err := cfg.List( "urls" )
+	if err != nil {
+		return nil, err
+	}
+
+	urls := make( []string, 0 )
+	for _, curl := range curls {
+		if url, ok := curl.( string ); ok {
+			urls = append( urls, url )
+		} else {
+			log.Printf( "Skipping invalid URL: %s\n", curl )
+		}
+	}
+
+	return urls, nil
+}
 
 func main() {
 	var configFile = "newsfab.yaml"
@@ -47,23 +69,9 @@ func main() {
 	flag.StringVar( &templateFile, "t", templateFile, "template file" )
 	flag.Parse()
 
-	cfg, err := config.ParseYamlFile( configFile )
+	urls, err := load_urls( configFile )
 	if err != nil {
 		log.Fatal( err )
-	}
-
-	curls, err := cfg.List( "urls" )
-	if err != nil {
-		log.Fatal( err )
-	}
-
-	urls := make( []string, 0 )
-	for _, curl := range curls {
-		if url, ok := curl.( string ); ok {
-			urls = append( urls, url )
-		} else {
-			log.Printf( "Skipping invalid URL: %s\n", curl )
-		}
 	}
 
 	tmpl, err := template.New( templateFile ).ParseFiles( templateFile )
