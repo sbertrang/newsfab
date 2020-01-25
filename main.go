@@ -117,6 +117,43 @@ func prepare_news( feeds Feeds ) News {
 	return data
 }
 
+func get_news( urls []string, templateFile string, outputFile string ) error {
+	ctx, cancel := context.WithTimeout( context.Background(), 10 * time.Second )
+	defer cancel()
+
+	feeds, err := fetch_feeds( urls, ctx )
+	if err != nil {
+		return err
+	}
+
+	data := prepare_news( feeds )
+
+	tmpl, err := template.New( templateFile ).ParseFiles( templateFile )
+	if err != nil {
+		return err
+	}
+
+	if outputFile == "" {
+		if err := tmpl.Execute( os.Stdout, data ); err != nil {
+			return err
+		}
+	} else {
+		r, w := io.Pipe()
+		go func() {
+			if err := tmpl.Execute( w, data ); err != nil {
+				log.Println( err )
+			}
+			w.Close()
+		}()
+		log.Printf( "Writing output file: %s\n", outputFile )
+		if err := atomic.WriteFile( outputFile, r ); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func main() {
 	var configFile = "newsfab.yaml"
 	var outputFile = ""
@@ -132,37 +169,8 @@ func main() {
 		log.Fatal( err )
 	}
 
-	ctx, cancel := context.WithTimeout( context.Background(), 10 * time.Second )
-	defer cancel()
-
-	feeds, err := fetch_feeds( urls, ctx )
-	if err != nil {
+	if err := get_news( urls, templateFile, outputFile ); err != nil {
 		log.Fatal( err )
-	}
-
-	data := prepare_news( feeds )
-
-	tmpl, err := template.New( templateFile ).ParseFiles( templateFile )
-	if err != nil {
-		log.Fatal( err )
-	}
-
-	if outputFile == "" {
-		if err := tmpl.Execute( os.Stdout, data ); err != nil {
-			log.Fatal( err )
-		}
-	} else {
-		r, w := io.Pipe()
-		go func() {
-			if err := tmpl.Execute( w, data ); err != nil {
-				log.Fatal( err )
-			}
-			w.Close()
-		}()
-		log.Printf( "Writing output file: %s\n", outputFile )
-		if err := atomic.WriteFile( outputFile, r ); err != nil {
-			log.Fatal( err )
-		}
 	}
 }
 
