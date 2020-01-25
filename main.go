@@ -67,13 +67,11 @@ func load_urls( file string ) ( []string, error ) {
 }
 
 func fetch_feeds( urls []string, ctx context.Context ) ( Feeds, error ) {
-	cache := diskcache.New( ".cache" )
-	transport := httpcache.NewTransport( cache )
-	client := http.Client{ Transport: transport }
-	fp := gofeed.NewParser()
-	fp.Client = &client
-
 	feeds := make( Feeds, 0 )
+	fp := gofeed.NewParser()
+	fp.Client = &http.Client{
+		Transport: httpcache.NewTransport( diskcache.New( ".cache" ) ),
+	}
 
 	var wg sync.WaitGroup
 	for _, url := range urls {
