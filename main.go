@@ -38,6 +38,11 @@ type Record struct {
 
 type Feeds []*gofeed.Feed
 
+type News struct {
+	Feeds   Feeds
+	Records	[]Record
+}
+
 func load_urls( file string ) ( []string, error ) {
 	cfg, err := config.ParseYamlFile( file )
 	if err != nil {
@@ -88,6 +93,32 @@ func fetch_feeds( urls []string, ctx context.Context ) ( Feeds, error ) {
 	return feeds, nil
 }
 
+func prepare_news( feeds Feeds ) News {
+	data := News{
+		Feeds: feeds,
+		Records: make( []Record, 0 ),
+	}
+
+	for _, feed := range feeds {
+		for _, item := range feed.Items {
+			t := item.UpdatedParsed
+			if t == nil {
+				t = item.PublishedParsed
+			}
+			data.Records = append( data.Records, Record{ feed, item, t } )
+		}
+	}
+
+	sort.Slice( data.Feeds, func( i, j int ) bool {
+		return data.Feeds[ i ].Title < data.Feeds[ j ].Title
+	} )
+	sort.Slice( data.Records, func( i, j int ) bool {
+		return data.Records[ i ].Time.After( *data.Records[ j ].Time )
+	} )
+
+	return data
+}
+
 func main() {
 	var configFile = "newsfab.yaml"
 	var outputFile = ""
@@ -111,30 +142,7 @@ func main() {
 		log.Fatal( err )
 	}
 
-	data := struct {
-		Feeds   Feeds
-		Records	[]Record
-	}{}
-
-	data.Feeds = feeds
-	data.Records = make( []Record, 0 )
-
-	for _, feed := range feeds {
-		for _, item := range feed.Items {
-			t := item.UpdatedParsed
-			if t == nil {
-				t = item.PublishedParsed
-			}
-			data.Records = append( data.Records, Record{ feed, item, t } )
-		}
-	}
-
-	sort.Slice( data.Feeds, func( i, j int ) bool {
-		return data.Feeds[ i ].Title < data.Feeds[ j ].Title
-	} )
-	sort.Slice( data.Records, func( i, j int ) bool {
-		return data.Records[ i ].Time.After( *data.Records[ j ].Time )
-	} )
+	data := prepare_news( feeds )
 
 	tmpl, err := template.New( templateFile ).ParseFiles( templateFile )
 	if err != nil {
