@@ -9,8 +9,10 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"sort"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/gregjones/httpcache"
@@ -117,8 +119,8 @@ func prepare_news( feeds Feeds ) News {
 	return data
 }
 
-func get_news( urls []string, templateFile string, outputFile string ) error {
-	ctx, cancel := context.WithTimeout( context.Background(), 10 * time.Second )
+func get_news( urls []string, templateFile string, outputFile string, ctx context.Context ) error {
+	ctx, cancel := context.WithTimeout( ctx, 10 * time.Second )
 	defer cancel()
 
 	feeds, err := fetch_feeds( urls, ctx )
@@ -152,7 +154,7 @@ func get_news( urls []string, templateFile string, outputFile string ) error {
 
 func main() {
 	var configFile = "newsfab.yaml"
-	var outputFile = ""
+	var outputFile = "newsfab.html"
 	var templateFile = "html.tmpl"
 
 	flag.StringVar( &configFile, "c", configFile, "config file" )
@@ -165,8 +167,73 @@ func main() {
 		log.Fatal( err )
 	}
 
-	if err := get_news( urls, templateFile, outputFile ); err != nil {
-		log.Fatal( err )
+	ctx := context.Background()
+
+	ctx, cancel := context.WithCancel( ctx )
+	c := make( chan os.Signal, 1 )
+	r := make( chan os.Signal, 1 )
+	t := make( chan os.Signal, 1 )
+	signal.Notify( c, syscall.SIGINT )
+	signal.Notify( r, syscall.SIGHUP )
+	signal.Notify( t, syscall.SIGTERM )
+
+	// stop listening for signals and cancel context when leaving scope
+	defer func() {
+		signal.Stop( c )
+		signal.Stop( r )
+		signal.Stop( t )
+		cancel()
+	}()
+
+	// periodic fetching of news
+	ticker := time.NewTicker( 5 * time.Minute )
+	stop := make( chan bool, 1 )
+	go func() {
+		for {
+			if err := get_news( urls, templateFile, outputFile, ctx ); err != nil {
+				log.Fatal( err )
+			}
+			select {
+			case <- ticker.C:
+			case <- stop:
+				ticker.Stop()
+				return
+			}
+		}
+	}()
+
+	// wait for signal to reload config
+	go func() {
+		for {
+			select {
+			case <- r:
+				log.Println( "Reloading:", configFile )
+
+				nurls, err := load_urls( configFile )
+				if err != nil {
+					log.Println( err )
+				} else {
+					urls = nurls
+					log.Println( "New configuration:", urls )
+				}
+			}
+		}
+	}()
+
+	// wait for final event
+	select {
+	case <- c:
+		fmt.Println( "ancel..." )
+		stop <- true
+		cancel()
+	case <- t:
+		log.Println( "Terminate..." )
+		stop <- true
+		cancel()
+	case <- ctx.Done():
+		log.Println( "Done..." )
 	}
+
+	log.Println( "Exiting" )
 }
 
