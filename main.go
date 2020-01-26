@@ -133,22 +133,18 @@ func get_news( urls []string, templateFile string, outputFile string ) error {
 		return err
 	}
 
-	if outputFile == "" {
-		if err := tmpl.Execute( os.Stdout, data ); err != nil {
-			return err
+	r, w := io.Pipe()
+	go func() {
+		if err := tmpl.Execute( w, data ); err != nil {
+			log.Println( err )
 		}
-	} else {
-		r, w := io.Pipe()
-		go func() {
-			if err := tmpl.Execute( w, data ); err != nil {
-				log.Println( err )
-			}
-			w.Close()
-		}()
-		log.Printf( "Writing output file: %s\n", outputFile )
-		if err := atomic.WriteFile( outputFile, r ); err != nil {
-			return err
-		}
+		w.Close()
+	}()
+
+	log.Printf( "Writing output file: %s\n", outputFile )
+
+	if err := atomic.WriteFile( outputFile, r ); err != nil {
+		return err
 	}
 
 	return nil
